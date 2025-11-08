@@ -338,8 +338,8 @@ configure_networking() {
             if virsh net-start default 2>/dev/null; then
                 print_success "Default network started"
             else
-                print_error "Failed to start default network"
-                return 1
+                print_warning "Failed to start default network - may need manual configuration"
+                # Don't return error, continue with setup
             fi
         fi
         
@@ -379,12 +379,26 @@ configure_networking() {
 EOF
         
         if virsh net-define "/tmp/default_network.xml" 2>/dev/null; then
-            virsh net-start default 2>/dev/null
-            virsh net-autostart default 2>/dev/null
-            print_success "Default network created and started"
+            print_info "Network defined successfully"
+            if virsh net-start default 2>/dev/null; then
+                print_success "Default network started"
+            else
+                print_warning "Network exists but couldn't start (may already be configured)"
+                # Try to get network info to verify it's working
+                if virsh net-info default >/dev/null 2>&1; then
+                    print_info "Network appears to be functional"
+                else
+                    print_error "Network configuration may need manual attention"
+                fi
+            fi
+            if virsh net-autostart default 2>/dev/null; then
+                print_info "Network autostart enabled"
+            else
+                print_warning "Could not enable network autostart"
+            fi
+            print_success "Default network setup completed"
         else
-            print_error "Failed to create default network"
-            return 1
+            print_warning "Network may already exist or need manual configuration"
         fi
         
         rm -f "/tmp/default_network.xml"

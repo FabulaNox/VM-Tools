@@ -224,6 +224,35 @@ impl VmManager {
         if self.libvirt.domain_exists(name).await? {
             return Err(VmError::VmAlreadyExists(name.to_string()));
         }
+
+        // Check available networks and select the best one
+        let available_networks = self.libvirt.list_networks().await?;
+        let active_networks: Vec<String> = available_networks.iter()
+            .filter(|(_, active, _, _)| *active)
+            .map(|(name, _, _, _)| name.clone())
+            .collect();
+        
+        let selected_network = if active_networks.contains(&self.config.network.default_network) {
+            println!("{} Using default network: {}", 
+                     "Network:".cyan(), self.config.network.default_network.green());
+            self.config.network.default_network.clone()
+        } else if let Some(first_network) = active_networks.first() {
+            println!("{} Default network '{}' not available, using: {}", 
+                     "Network:".yellow(), 
+                     self.config.network.default_network,
+                     first_network.green());
+            first_network.clone()
+        } else {
+            return Err(VmError::NetworkError(
+                "No active virtual networks found. Please start a network first:\n  virsh net-start default\n  or create a new network.".to_string()
+            ));
+        };
+        
+        if !active_networks.is_empty() {
+            println!("{} Available networks: {}", 
+                     "Info:".cyan(), 
+                     active_networks.join(", "));
+        }
         
         // Get template or use defaults
         let template = if let Some(template_name) = template_name {
@@ -259,7 +288,7 @@ impl VmManager {
         pb.set_position(40);
         
         // Generate XML configuration
-        let xml_config = self.generate_vm_xml(name, &template, &disk_path, iso_path)?;
+        let xml_config = self.generate_vm_xml(name, &template, &disk_path, iso_path, &selected_network)?;
         
         pb.set_message("Registering VM with libvirt...");
         pb.set_position(70);
@@ -352,6 +381,27 @@ impl VmManager {
         pb.set_message("Creating new VM configuration...");
         pb.set_position(80);
         
+        // Detect available networks
+        let networks = self.libvirt.list_networks().await?;
+        let active_networks: Vec<String> = networks.iter()
+            .filter(|(_, active, _, _)| *active)
+            .map(|(name, _, _, _)| name.clone())
+            .collect();
+            
+        let selected_network = if active_networks.contains(&self.config.network.default_network) {
+            println!("📡 Using configured network: {}", self.config.network.default_network.green());
+            self.config.network.default_network.clone()
+        } else if let Some(first_network) = active_networks.first() {
+            println!("⚠️  Configured network '{}' not available, using: {}", 
+                     self.config.network.default_network,
+                     first_network.green());
+            first_network.clone()
+        } else {
+            return Err(VmError::NetworkError(
+                "No active networks available for VM creation".to_string()
+            ));
+        };
+        
         // Create new XML with updated paths and UUID
         let target_disk_path = self.config.storage.vm_images_path.join(format!("{}.qcow2", target));
         let template = VmTemplate {
@@ -365,7 +415,7 @@ impl VmManager {
             features: vec!["acpi".to_string(), "apic".to_string()],
         };
         
-        let xml_config = self.generate_vm_xml(target, &template, &target_disk_path, None)?;
+        let xml_config = self.generate_vm_xml(target, &template, &target_disk_path, None, &selected_network)?;
         self.libvirt.define_domain(&xml_config).await?;
         
         pb.finish_with_message(format!("✓ VM '{}' cloned successfully", target));
@@ -445,6 +495,7 @@ impl VmManager {
         template: &VmTemplate,
         disk_path: &std::path::Path,
         iso_path: Option<&str>,
+        network: &str,
     ) -> Result<String> {
         let uuid = uuid::Uuid::new_v4();
         
@@ -555,7 +606,7 @@ impl VmManager {
   </devices>
 </domain>"#,
             utils::generate_mac_address(),
-            self.config.network.default_network
+            network
         ));
         
         Ok(xml)

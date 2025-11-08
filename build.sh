@@ -76,6 +76,15 @@ check_dependencies() {
     print_info "All dependencies are satisfied"
 }
 
+# Function to check if running as root
+check_root() {
+    if [[ $EUID -eq 0 ]]; then
+        print_warning "Running as root. This is required for system-wide installation."
+    else
+        print_info "Running as regular user."
+    fi
+}
+
 # Build function
 build_project() {
     local build_type=${1:-debug}
