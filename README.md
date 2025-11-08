@@ -35,39 +35,167 @@ A high-performance VM management tool for QEMU/KVM with libvirt integration, wri
 
 ## Installation
 
-### Option 1: Quick Setup (Recommended)
+### 🚀 Quick Install (Recommended)
 
-1. **Install QEMU/KVM and dependencies**:
-   ```bash
-   sudo ./install-qemu-kvm.sh
-   ```
-
-2. **Install Rust** (if not already installed):
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source ~/.bashrc
-   ```
-
-3. **Build and install vmtools**:
-   ```bash
-   ./build.sh install
-   ```
-
-### Option 2: Development Setup
-
+**One-liner remote install:**
 ```bash
-# Clone the repository
+curl -sSL https://raw.githubusercontent.com/FabulaNox/VM-Tools/main/install.sh | bash
+```
+
+**From repository:**
+```bash
+git clone https://github.com/FabulaNox/VM-Tools.git
+cd VM-Tools
+make deploy
+```
+
+### 📋 Installation Options
+
+#### Option 1: Full Deployment (System-wide)
+```bash
+# Clone repository
 git clone https://github.com/FabulaNox/VM-Tools.git
 cd VM-Tools
 
-# Check dependencies
+# Full deployment with post-install setup
+./install.sh quick
+# OR
+make deploy
+```
+
+#### Option 2: User-only Install (No sudo)
+```bash
+# Install for current user only
+./install.sh user
+# OR  
+make install-user
+```
+
+#### Option 3: Development Setup
+```bash
+# Development environment
+./install.sh dev
+# OR
+make dev
+```
+
+#### Option 4: Custom Installation
+```bash
+# Check dependencies first
 ./build.sh deps
 
-# Build in debug mode
-./build.sh debug
+# Build and install
+./build.sh release
+sudo ./build.sh install
 
-# Run directly
-./target/debug/vmtools --help
+# Run post-install configuration
+./post-install.sh all
+```
+
+### 🔧 Manual Dependencies
+
+If you prefer to install dependencies manually:
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install git curl build-essential libvirt-clients qemu-utils qemu-kvm libvirt-daemon-system
+```
+
+**CentOS/RHEL:**
+```bash
+sudo yum groupinstall "Development Tools"
+sudo yum install git curl libvirt-client qemu-img qemu-kvm libvirt-daemon
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S git curl base-devel libvirt qemu-img qemu
+```
+
+**Rust (if not installed):**
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+### 🎯 Post-Installation
+
+After installation, vmtools automatically runs post-install configuration. You can also run it manually:
+
+```bash
+# Run all post-install steps
+./post-install.sh all
+
+# Or individual components
+./post-install.sh validate    # Validate system requirements
+./post-install.sh configure   # Setup permissions
+./post-install.sh network     # Configure networking
+./post-install.sh health      # Run health checks
+```
+
+### ✅ Verify Installation
+
+```bash
+# Check installation
+vmtools --version
+vmtools config --show
+
+# List existing VMs
+vmtools list --all
+
+# Run health check
+./post-install.sh health
+```
+
+### 🗑️ Uninstallation
+
+```bash
+# Using installer
+./install.sh uninstall
+
+# Using Makefile
+make uninstall
+
+# Manual removal
+sudo rm -f /usr/local/bin/vmtools
+rm -f ~/.local/bin/vmtools
+# Optionally remove config: rm -rf ~/.config/vmtools
+```
+
+## Deployment
+
+### 🚢 Server Deployment
+
+For deploying on servers or automated environments:
+
+```bash
+# Silent installation
+curl -sSL https://raw.githubusercontent.com/FabulaNox/VM-Tools/main/install.sh | SKIP_INTERACTIVE=1 bash
+
+# Or with environment variables
+INSTALL_DIR=/opt/bin ./install.sh quick
+SKIP_DEPENDENCIES=1 ./install.sh user
+```
+
+### 🐳 Container Deployment
+
+VM-Tools can be used in containers for VM management:
+
+```dockerfile
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y curl git
+RUN curl -sSL https://raw.githubusercontent.com/FabulaNox/VM-Tools/main/install.sh | bash
+CMD ["vmtools", "--help"]
+```
+
+### 📦 Package Distribution
+
+For creating distribution packages:
+
+```bash
+# Build static binary
+cargo build --release --target x86_64-unknown-linux-musl
+
+# Create tarball
+tar -czf vmtools-linux-x86_64.tar.gz -C target/release vmtools
 ```
 
 ## Usage

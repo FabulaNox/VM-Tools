@@ -111,6 +111,95 @@ install_project() {
     # Test installation
     if vmtools --version &> /dev/null; then
         print_info "Installation verified successfully"
+        
+        # Run post-install configuration
+        if [[ -f "./post-install.sh" ]]; then
+            print_step "Running post-install configuration..."
+            ./post-install.sh all
+        fi
+    else
+        print_error "Installation verification failed"
+        exit 1
+    fi
+}
+
+# Deploy function for easy repository deployment
+deploy_project() {
+    print_step "Deploying vmtools from repository..."
+    
+    # Run full deployment sequence
+    check_rust
+    check_dependencies
+    build_project release
+    
+    # Install system-wide
+    sudo cp target/release/vmtools /usr/local/bin/
+    sudo chmod +x /usr/local/bin/vmtools
+    
+    # Create config directory
+    mkdir -p "$HOME/.config/vmtools"
+    
+    # Run post-install configuration
+    if [[ -f "./post-install.sh" ]]; then
+        print_step "Running post-install configuration..."
+        ./post-install.sh all
+    else
+        print_warning "post-install.sh not found, skipping configuration"
+    fi
+    
+    print_info "Deployment completed successfully!"
+    print_info "Run 'vmtools --help' to get started"
+}
+
+# User install function (no sudo required)
+install_user() {
+    print_step "Installing vmtools for current user..."
+    
+    # Build release version
+    cargo build --release
+    
+    # Create user bin directory
+    local user_bin="$HOME/.local/bin"
+    mkdir -p "$user_bin"
+    
+    # Install binary
+    cp target/release/vmtools "$user_bin/"
+    chmod +x "$user_bin/vmtools"
+    
+    # Add to PATH if not already there
+    local shell_rc=""
+    if [[ "$SHELL" == *"zsh"* ]]; then
+        shell_rc="$HOME/.zshrc"
+    elif [[ "$SHELL" == *"bash"* ]]; then
+        shell_rc="$HOME/.bashrc"
+    fi
+    
+    if [[ -n "$shell_rc" && -f "$shell_rc" ]]; then
+        if ! grep -q "$user_bin" "$shell_rc"; then
+            echo "" >> "$shell_rc"
+            echo "# Added by vmtools installer" >> "$shell_rc"
+            echo "export PATH=\"$user_bin:\$PATH\"" >> "$shell_rc"
+            print_info "Added $user_bin to PATH in $shell_rc"
+        fi
+    fi
+    
+    # Create config directory
+    mkdir -p "$HOME/.config/vmtools"
+    
+    print_info "vmtools installed to $user_bin/vmtools"
+    print_info "Configuration directory: $HOME/.config/vmtools"
+    print_warning "Please restart your terminal or run: export PATH=\"$user_bin:\$PATH\""
+    
+    # Test installation
+    if "$user_bin/vmtools" --version &> /dev/null; then
+        print_info "Installation verified successfully"
+        
+        # Run post-install configuration (user mode)
+        if [[ -f "./post-install.sh" ]]; then
+            print_step "Running post-install configuration..."
+            export PATH="$user_bin:$PATH"
+            ./post-install.sh all
+        fi
     else
         print_error "Installation verification failed"
         exit 1
@@ -154,7 +243,9 @@ show_help() {
     echo "Commands:"
     echo "  debug     Build in debug mode (default)"
     echo "  release   Build in release mode"
-    echo "  install   Build and install to system"
+    echo "  install   Build and install to system (requires sudo)"
+    echo "  deploy    Full deployment from repository (recommended)"
+    echo "  user      Install for current user only (no sudo)"
     echo "  clean     Clean build artifacts"
     echo "  test      Run all tests"
     echo "  lint      Run clippy linter"
@@ -163,10 +254,15 @@ show_help() {
     echo "  all       Run format, lint, test, and build"
     echo "  help      Show this help message"
     echo ""
+    echo "Deployment Commands:"
+    echo "  deploy    Complete deployment with post-install setup"
+    echo "  user      User-only install (no system-wide changes)"
+    echo ""
     echo "Examples:"
     echo "  $0                # Build in debug mode"
     echo "  $0 release        # Build in release mode"
-    echo "  $0 install        # Install to system"
+    echo "  $0 deploy         # Full deployment (recommended)"
+    echo "  $0 user           # Install for current user"
     echo "  $0 all            # Complete development cycle"
 }
 
@@ -191,9 +287,19 @@ main() {
             build_project release
             ;;
         "install")
-            check_rust
+            check_root
             check_dependencies
             install_project
+            ;;
+        "deploy")
+            check_root
+            check_dependencies
+            deploy_project
+            ;;
+        "user")
+            check_rust
+            check_dependencies
+            install_user
             ;;
         "clean")
             clean_project
