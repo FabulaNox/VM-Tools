@@ -1,0 +1,56 @@
+[package]
+name = "vmtools"
+version = "0.1.0"
+edition = "2021"
+authors = ["VM-Tools Contributors"]
+description = "A high-performance VM management tool for QEMU/KVM with libvirt integration"
+license = "MIT"
+repository = "https://github.com/FabulaNox/VM-Tools"
+keywords = ["vm", "qemu", "kvm", "libvirt", "hypervisor"]
+categories = ["command-line-utilities", "virtualization"]
+
+[[bin]]
+name = "vmtools"
+path = "src/main.rs"
+
+[dependencies]
+# Command line interface
+clap = { version = "4.4", features = ["derive", "color"] }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# System interaction
+nix = "0.27"
+libc = "0.2"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# Utilities
+uuid = { version = "1.0", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+humantime = "2.1"
+byte-unit = "4.0"
+dirs = "5.0"
+rand = "0.8"
+
+# Terminal UI
+colored = "2.0"
+indicatif = "0.17"
+
+# Libvirt bindings (we'll create a basic wrapper for now)
+# virt = "0.4"  # This would be the real libvirt binding, but let's build our own wrapper
+
+[dev-dependencies]
+tempfile = "3.0"
