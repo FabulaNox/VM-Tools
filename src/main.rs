@@ -1,16 +1,20 @@
-use clap::{Parser, Subcommand};
-use log::{error, info, warn};
+use clap::Parser;
+use log::error;
 use std::process;
+use tokio;
 
 mod cli;
-mod lib;
+mod config;
+mod vm;
+mod libvirt;
+mod error;
+mod qemu;
+mod utils;
 
 use cli::Cli;
-use lib::{
-    config::Config,
-    vm::{VmManager, VmState},
-    error::VmError,
-};
+use config::Config;
+use vm::VmManager;
+use error::VmError;
 
 #[tokio::main]
 async fn main() {
