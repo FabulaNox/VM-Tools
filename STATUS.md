@@ -98,7 +98,7 @@ vmtools/
    sudo ./install.sh system
    ```
 
-## 🔧 Post-Installation
+## �️ Post-Installation
 
 ```bash
 # Configure system
@@ -108,6 +108,41 @@ vmtools/
 vmtools --help
 vmtools list --all
 ```
+
+## 🗑️ Safe Uninstallation
+
+**VM-Tools includes a comprehensive uninstaller that NEVER touches your VMs or their data.**
+
+### Complete Safe Uninstall
+```bash
+# Recommended method
+./uninstall.sh
+
+# Preview what will be removed
+./uninstall.sh --dry-run
+
+# Remove only binary, keep config
+./uninstall.sh --binary-only
+
+# Skip confirmations
+./uninstall.sh --force
+```
+
+### Quick Methods
+```bash
+# Basic uninstall
+./install.sh uninstall
+
+# Using Makefile
+make uninstall-safe
+```
+
+### Safety Guarantees
+✅ **Your VMs remain completely untouched**  
+✅ **VM disk images are preserved**  
+✅ **libvirt configuration unchanged**  
+✅ **VM networks and storage pools remain**  
+✅ **All VM data and snapshots safe**
 
 ## 📖 Usage Examples
 

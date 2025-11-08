@@ -382,11 +382,15 @@ user_install() {
     cleanup
 }
 
-# Function to uninstall
+# Function to uninstall (basic removal)
 uninstall() {
     echo "=============================================="
-    echo "  VM-Tools Uninstall"
+    echo "  VM-Tools Quick Uninstall"
     echo "=============================================="
+    echo ""
+    
+    print_warning "For complete and safe uninstall options, use: ./uninstall.sh"
+    print_info "This performs basic removal only"
     echo ""
     
     print_step "Removing vmtools..."
@@ -414,6 +418,7 @@ uninstall() {
     fi
     
     print_success "vmtools uninstalled"
+    print_info "For complete cleanup, run: ./uninstall.sh --complete"
 }
 
 # Function to show help
@@ -427,7 +432,7 @@ show_help() {
     echo "  dev       Development setup (clone repo locally)"
     echo "  system    System-wide install (same as quick)"
     echo "  user      User-local install (no sudo required)"
-    echo "  uninstall Remove vmtools"
+    echo "  uninstall Remove vmtools (basic - use ./uninstall.sh for complete removal)"
     echo "  help      Show this help"
     echo ""
     echo "Environment variables:"

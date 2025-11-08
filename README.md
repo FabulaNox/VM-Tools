@@ -147,18 +147,64 @@ vmtools list --all
 
 ### 🗑️ Uninstallation
 
+**VM-Tools provides a safe uninstaller that NEVER touches your VMs or their data.**
+
+#### Complete Safe Uninstall (Recommended)
+
 ```bash
-# Using installer
+# Use the dedicated uninstall script
+./uninstall.sh
+
+# Preview what will be removed
+./uninstall.sh --dry-run
+
+# Check current installation
+./uninstall.sh --verify
+
+# Remove only the binary, keep config
+./uninstall.sh --binary-only
+
+# Skip confirmations
+./uninstall.sh --force
+```
+
+#### Quick Uninstall
+
+```bash
+# Using installer (basic removal)
 ./install.sh uninstall
 
 # Using Makefile
 make uninstall
+```
 
-# Manual removal
+#### Manual Removal
+
+```bash
+# Remove binaries
 sudo rm -f /usr/local/bin/vmtools
 rm -f ~/.local/bin/vmtools
-# Optionally remove config: rm -rf ~/.config/vmtools
+
+# Remove configuration (optional)
+rm -rf ~/.config/vmtools
+rm -rf ~/.cache/vmtools
 ```
+
+#### What Gets Removed vs Preserved
+
+✅ **Removed:**
+- vmtools binary files
+- Configuration directory (`~/.config/vmtools`)
+- Cache files (`~/.cache/vmtools`)
+- Repository clones (with confirmation)
+
+🚫 **NEVER Removed:**
+- Your VMs and disk images
+- libvirt/QEMU system configuration  
+- VM networks and storage pools
+- VM snapshots and data
+
+**After uninstalling, your VMs remain fully functional and manageable with `virsh`, `virt-manager`, or other libvirt tools.**
 
 ## Deployment
 

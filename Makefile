@@ -1,7 +1,7 @@
 # VM-Tools Makefile
 # Provides easy deployment and installation targets
 
-.PHONY: help install install-user deploy clean test build release dev uninstall post-install
+.PHONY: help install install-user deploy clean test build release dev uninstall uninstall-safe post-install
 
 # Default target
 help:
@@ -23,7 +23,8 @@ help:
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  post-install  Run post-install configuration"
-	@echo "  uninstall     Remove vmtools"
+	@echo "  uninstall     Basic removal (use uninstall-safe for complete)"
+	@echo "  uninstall-safe Complete safe uninstall (preserves VMs)"
 	@echo ""
 	@echo "Quick start:"
 	@echo "  make deploy   # Recommended for first-time setup"
@@ -87,6 +88,11 @@ format:
 
 lint:
 	./build.sh lint
+
+# Safe uninstallation (preserves VMs)
+uninstall-safe:
+	@echo "🗑️ Running safe uninstall (VMs preserved)..."
+	./uninstall.sh
 
 # Complete development cycle
 all:
