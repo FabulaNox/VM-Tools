@@ -8,10 +8,11 @@ use crate::{
 
 pub struct LibvirtClient {
     uri: String,
+    temp_dir: String,
 }
 
 impl LibvirtClient {
-    pub async fn new(uri: &str) -> Result<Self> {
+    pub async fn new(uri: &str, temp_dir: &str) -> Result<Self> {
         // Test connection
         let output = AsyncCommand::new("virsh")
             .args(&["-c", uri, "version"])
@@ -26,6 +27,7 @@ impl LibvirtClient {
 
         Ok(Self {
             uri: uri.to_string(),
+            temp_dir: temp_dir.to_string(),
         })
     }
 
@@ -267,8 +269,8 @@ impl LibvirtClient {
     }
 
     pub async fn define_domain(&self, xml: &str) -> Result<()> {
-        // Write XML to temporary file
-        let temp_file = format!("/tmp/vmtools_domain_{}.xml", uuid::Uuid::new_v4());
+        // Write XML to temporary file using configurable temp directory
+        let temp_file = format!("{}/vmtools_domain_{}.xml", self.temp_dir, uuid::Uuid::new_v4());
         tokio::fs::write(&temp_file, xml).await
             .map_err(|e| VmError::IoError(e))?;
 

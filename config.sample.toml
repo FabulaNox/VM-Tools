@@ -1,0 +1,95 @@
+# VM-Tools Configuration File
+# This file contains all configurable paths and settings for VM-Tools
+# Copy this file to ~/.config/vmtools/config.toml and customize as needed
+
+[libvirt]
+# Libvirt connection URI
+uri = "qemu:///system"
+# Optional path to libvirt socket (comment out to use default)
+socket_path = "/var/run/libvirt/libvirt-sock"
+# Connection timeout in seconds
+timeout = 30
+
+[storage]
+# Default storage pool name
+default_pool = "default"
+# Path where VM disk images are stored
+vm_images_path = "/var/lib/libvirt/images"
+# Path where ISO files are stored
+iso_path = "/var/lib/libvirt/images/iso"
+# Path for VM backups
+backup_path = "/var/lib/libvirt/backup"
+
+[network]
+# Default network name for new VMs
+default_network = "default"
+# Default bridge interface
+bridge_interface = "virbr0"
+
+[system]
+# Temporary directory for VM operations
+temp_dir = "/tmp"
+# Path to KVM device
+kvm_device = "/dev/kvm"
+# Path to CPU info file
+proc_cpuinfo = "/proc/cpuinfo"
+# Path to memory info file
+proc_meminfo = "/proc/meminfo"
+
+[defaults]
+# Default memory for new VMs (in MB)
+memory = 2048
+# Default number of CPUs for new VMs
+cpus = 2
+# Default disk size for new VMs (in GB)
+disk_size = 20
+# Default OS type
+os_type = "linux"
+# Default architecture
+arch = "x86_64"
+# Default machine type
+machine_type = "pc-q35-6.0"
+# Default boot order
+boot_order = ["hd", "cdrom"]
+# Default features to enable
+features = ["acpi", "apic", "hyperv"]
+
+# VM Templates
+# Define custom templates for different VM types
+[templates.ubuntu-server]
+memory = 2048
+cpus = 2
+disk_size = 20
+os_type = "linux"
+arch = "x86_64"
+machine_type = "pc-q35-6.0"
+boot_order = ["hd", "cdrom"]
+features = ["acpi", "apic", "hyperv"]
+
+[templates.windows-10]
+memory = 4096
+cpus = 4
+disk_size = 50
+os_type = "windows"
+arch = "x86_64"
+machine_type = "pc-q35-6.0"
+boot_order = ["hd", "cdrom"]
+features = ["acpi", "apic", "hyperv"]
+
+[templates.minimal]
+memory = 512
+cpus = 1
+disk_size = 10
+os_type = "linux"
+arch = "x86_64"
+machine_type = "pc-q35-6.0"
+boot_order = ["hd", "cdrom"]
+features = ["acpi", "apic"]
+
+# Notes:
+# - All paths should be absolute paths
+# - The temp_dir is used for temporary XML files during VM operations
+# - The system paths (kvm_device, proc_cpuinfo, proc_meminfo) are used for
+#   hardware detection and validation
+# - Storage paths should be writable by the user running VM-Tools
+# - Network settings should match your libvirt network configuration

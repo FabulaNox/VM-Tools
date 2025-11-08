@@ -11,6 +11,7 @@ pub struct Config {
     pub libvirt: LibvirtConfig,
     pub storage: StorageConfig,
     pub network: NetworkConfig,
+    pub system: SystemConfig,
     pub templates: HashMap<String, VmTemplate>,
     pub defaults: DefaultsConfig,
 }
@@ -34,6 +35,14 @@ pub struct StorageConfig {
 pub struct NetworkConfig {
     pub default_network: String,
     pub bridge_interface: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemConfig {
+    pub temp_dir: PathBuf,
+    pub kvm_device: PathBuf,
+    pub proc_cpuinfo: PathBuf,
+    pub proc_meminfo: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +110,12 @@ impl Default for Config {
             network: NetworkConfig {
                 default_network: "default".to_string(),
                 bridge_interface: "virbr0".to_string(),
+            },
+            system: SystemConfig {
+                temp_dir: PathBuf::from("/tmp"),
+                kvm_device: PathBuf::from("/dev/kvm"),
+                proc_cpuinfo: PathBuf::from("/proc/cpuinfo"),
+                proc_meminfo: PathBuf::from("/proc/meminfo"),
             },
             templates,
             defaults: DefaultsConfig {

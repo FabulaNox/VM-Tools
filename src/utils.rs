@@ -2,7 +2,10 @@ use std::path::Path;
 use tokio::process::Command;
 use rand::Rng;
 
-use crate::error::{VmError, Result};
+use crate::{
+    error::{VmError, Result},
+    config::Config,
+};
 
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
@@ -242,7 +245,7 @@ pub async fn check_libvirt_running() -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub async fn check_kvm_support() -> Result<()> {
+pub async fn check_kvm_support(config: &Config) -> Result<()> {
     // Check if KVM module is loaded
     let output = Command::new("lsmod")
         .output()
@@ -254,26 +257,26 @@ pub async fn check_kvm_support() -> Result<()> {
         return Err(VmError::ResourceUnavailable("KVM module is not loaded".to_string()));
     }
 
-    // Check if /dev/kvm exists and is accessible
-    if !tokio::fs::try_exists("/dev/kvm").await.unwrap_or(false) {
-        return Err(VmError::ResourceUnavailable("/dev/kvm device not found".to_string()));
+    // Check if /dev/kvm exists and is accessible using configurable path
+    if !tokio::fs::try_exists(&config.system.kvm_device).await.unwrap_or(false) {
+        return Err(VmError::ResourceUnavailable(format!("{} device not found", config.system.kvm_device.display())));
     }
 
     Ok(())
 }
 
 #[allow(dead_code)]
-pub async fn get_host_info() -> Result<HostInfo> {
-    // Get CPU info
-    let cpuinfo = tokio::fs::read_to_string("/proc/cpuinfo").await
+pub async fn get_host_info(config: &Config) -> Result<HostInfo> {
+    // Get CPU info using configurable path
+    let cpuinfo = tokio::fs::read_to_string(&config.system.proc_cpuinfo).await
         .map_err(|e| VmError::IoError(e))?;
     
     let cpu_count = cpuinfo.lines()
         .filter(|line| line.starts_with("processor"))
         .count() as u32;
 
-    // Get memory info
-    let meminfo = tokio::fs::read_to_string("/proc/meminfo").await
+    // Get memory info using configurable path
+    let meminfo = tokio::fs::read_to_string(&config.system.proc_meminfo).await
         .map_err(|e| VmError::IoError(e))?;
     
     let mut total_memory = 0;

@@ -73,7 +73,10 @@ pub struct VmManager {
 
 impl VmManager {
     pub async fn new(config: &Config) -> Result<Self> {
-        let libvirt = LibvirtClient::new(&config.libvirt.uri).await?;
+        let libvirt = LibvirtClient::new(
+            &config.libvirt.uri, 
+            config.system.temp_dir.to_str().unwrap_or("/tmp")
+        ).await?;
         
         Ok(Self {
             config: config.clone(),

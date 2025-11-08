@@ -305,6 +305,16 @@ vmtools config --get defaults.memory
 
 vmtools uses a TOML configuration file located at `~/.config/vmtools/config.toml`.
 
+### Configurable Paths
+
+VM-Tools supports configurable paths to avoid hardcoded system paths and improve flexibility:
+
+- **System paths**: Temporary directory, KVM device, proc filesystem paths
+- **Storage paths**: VM images, ISO files, backup locations  
+- **Libvirt paths**: Socket path and connection settings
+
+See `config.sample.toml` for a complete example and `CONFIGURABLE_PATHS.md` for detailed documentation.
+
 ### Default Configuration
 
 ```toml
@@ -317,6 +327,12 @@ default_pool = "default"
 vm_images_path = "/var/lib/libvirt/images"
 iso_path = "/var/lib/libvirt/images/iso"
 backup_path = "/var/lib/libvirt/backup"
+
+[system]
+temp_dir = "/tmp"
+kvm_device = "/dev/kvm"
+proc_cpuinfo = "/proc/cpuinfo"
+proc_meminfo = "/proc/meminfo"
 
 [network]
 default_network = "default"
