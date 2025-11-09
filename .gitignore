@@ -30,6 +30,7 @@ Thumbs.db
 *.iml
 *.ipr
 *.iws
+*.code-workspace
 
 # Logs
 *.log

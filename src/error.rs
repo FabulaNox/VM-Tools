@@ -39,6 +39,9 @@ pub enum VmError {
     #[error("Permission denied: {0}")]
     PermissionDenied(String),
     
+    #[error("Security error: {0}")]
+    SecurityError(String),
+    
     #[error("Resource not available: {0}")]
     ResourceUnavailable(String),
     

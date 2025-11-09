@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use rand::Rng;
 
@@ -6,6 +6,34 @@ use crate::{
     error::{VmError, Result},
     config::Config,
 };
+
+/// Validates and sanitizes a file path to prevent path traversal attacks (CWE-22)
+/// This function ensures the path is safe to read from and doesn't contain path traversal sequences
+fn validate_system_file_path(path: &Path, expected_prefix: &str) -> Result<PathBuf> {
+    // Convert to canonical path to resolve any symbolic links and relative components
+    let canonical_path = path.canonicalize()
+        .map_err(|_| VmError::SecurityError(format!("Invalid or inaccessible path: {}", path.display())))?;
+    
+    // Ensure the path starts with the expected system prefix (e.g., "/proc/", "/dev/")
+    if !canonical_path.starts_with(expected_prefix) {
+        return Err(VmError::SecurityError(format!(
+            "Path traversal attempt detected: {} does not start with expected prefix {}", 
+            canonical_path.display(), 
+            expected_prefix
+        )));
+    }
+    
+    // Additional check: ensure no path traversal components remain
+    let path_str = canonical_path.to_string_lossy();
+    if path_str.contains("..") || path_str.contains("./") {
+        return Err(VmError::SecurityError(format!(
+            "Path traversal sequences detected in: {}", 
+            path_str
+        )));
+    }
+    
+    Ok(canonical_path)
+}
 
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
@@ -164,20 +192,32 @@ pub struct ImageInfo {
 
 #[allow(dead_code)]
 pub fn validate_vm_name(name: &str) -> Result<()> {
-    if name.is_empty() {
+    // Check for empty or whitespace-only names
+    if name.trim().is_empty() {
         return Err(VmError::InvalidInput("VM name cannot be empty".to_string()));
     }
 
+    // Check length (reasonable limit)
     if name.len() > 64 {
         return Err(VmError::InvalidInput("VM name too long (max 64 characters)".to_string()));
     }
 
+    // Check for path traversal sequences - SECURITY: Prevent CWE-22 path traversal
+    if name.contains("..") || name.contains('/') || name.contains('\\') {
+        return Err(VmError::SecurityError(format!(
+            "VM name contains prohibited characters that could lead to path traversal: {}", 
+            name
+        )));
+    }
+
+    // Only allow alphanumeric characters, hyphens, and underscores (no dots to prevent hidden files)
     if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
         return Err(VmError::InvalidInput(
             "VM name can only contain alphanumeric characters, hyphens, and underscores".to_string()
         ));
     }
 
+    // Prevent names that start or end with hyphens
     if name.starts_with('-') || name.ends_with('-') {
         return Err(VmError::InvalidInput("VM name cannot start or end with a hyphen".to_string()));
     }
@@ -257,9 +297,10 @@ pub async fn check_kvm_support(config: &Config) -> Result<()> {
         return Err(VmError::ResourceUnavailable("KVM module is not loaded".to_string()));
     }
 
-    // Check if /dev/kvm exists and is accessible using configurable path
-    if !tokio::fs::try_exists(&config.system.kvm_device).await.unwrap_or(false) {
-        return Err(VmError::ResourceUnavailable(format!("{} device not found", config.system.kvm_device.display())));
+    // Validate and check if /dev/kvm exists and is accessible using configurable path
+    let validated_kvm_path = validate_system_file_path(&config.system.kvm_device, "/dev/")?;
+    if !tokio::fs::try_exists(&validated_kvm_path).await.unwrap_or(false) {
+        return Err(VmError::ResourceUnavailable(format!("{} device not found", validated_kvm_path.display())));
     }
 
     Ok(())
@@ -267,16 +308,18 @@ pub async fn check_kvm_support(config: &Config) -> Result<()> {
 
 #[allow(dead_code)]
 pub async fn get_host_info(config: &Config) -> Result<HostInfo> {
-    // Get CPU info using configurable path
-    let cpuinfo = tokio::fs::read_to_string(&config.system.proc_cpuinfo).await
+    // Validate and get CPU info using configurable path
+    let validated_cpuinfo_path = validate_system_file_path(&config.system.proc_cpuinfo, "/proc/")?;
+    let cpuinfo = tokio::fs::read_to_string(&validated_cpuinfo_path).await
         .map_err(|e| VmError::IoError(e))?;
     
     let cpu_count = cpuinfo.lines()
         .filter(|line| line.starts_with("processor"))
         .count() as u32;
 
-    // Get memory info using configurable path
-    let meminfo = tokio::fs::read_to_string(&config.system.proc_meminfo).await
+    // Validate and get memory info using configurable path
+    let validated_meminfo_path = validate_system_file_path(&config.system.proc_meminfo, "/proc/")?;
+    let meminfo = tokio::fs::read_to_string(&validated_meminfo_path).await
         .map_err(|e| VmError::IoError(e))?;
     
     let mut total_memory = 0;

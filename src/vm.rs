@@ -127,6 +127,9 @@ impl VmManager {
     pub async fn start_vm(&self, name: &str) -> Result<()> {
         println!("Starting VM '{}'...", name.green());
         
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
         let pb = ProgressBar::new_spinner();
         pb.set_style(ProgressStyle::default_spinner()
             .template("{spinner:.green} {msg}")
@@ -155,6 +158,9 @@ impl VmManager {
         let action = if force { "Force stopping" } else { "Stopping" };
         println!("{} VM '{}'...", action, name.red());
         
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
         if force {
             self.libvirt.destroy_domain(name).await?;
         } else {
@@ -166,6 +172,9 @@ impl VmManager {
     }
     
     pub async fn get_vm_status(&self, name: &str) -> Result<()> {
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
         let vm_info = self.libvirt.get_domain_info(name).await?;
         
         println!("{}", format!("VM Status: {}", name).bold());
@@ -222,6 +231,9 @@ impl VmManager {
         template_name: Option<&str>,
     ) -> Result<()> {
         println!("Creating VM '{}'...", name.green());
+        
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
         
         // Check if VM already exists
         if self.libvirt.domain_exists(name).await? {
@@ -316,6 +328,9 @@ impl VmManager {
     }
     
     pub async fn delete_vm(&self, name: &str, force: bool) -> Result<()> {
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
         if !force {
             print!("Are you sure you want to delete VM '{}'? [y/N]: ", name);
             use std::io::{self, Write};
@@ -357,6 +372,10 @@ impl VmManager {
     
     pub async fn clone_vm(&self, source: &str, target: &str) -> Result<()> {
         println!("Cloning VM '{}' to '{}'...", source.blue(), target.green());
+        
+        // Validate VM names to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(source)?;
+        utils::validate_vm_name(target)?;
         
         if self.libvirt.domain_exists(target).await? {
             return Err(VmError::VmAlreadyExists(target.to_string()));
@@ -426,6 +445,9 @@ impl VmManager {
     }
     
     pub async fn monitor_vm(&self, name: &str) -> Result<()> {
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
         println!("Monitoring VM '{}' (Press Ctrl+C to exit)...", name.cyan());
         
         loop {
@@ -456,6 +478,9 @@ impl VmManager {
     }
     
     pub async fn connect_console(&self, name: &str) -> Result<()> {
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
         println!("Connecting to console of VM '{}'...", name.cyan());
         self.libvirt.connect_console(name).await
     }

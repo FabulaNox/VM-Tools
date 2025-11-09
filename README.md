@@ -2,6 +2,10 @@
 
 A high-performance VM management tool for QEMU/KVM with libvirt integration, written in Rust for minimal overhead and maximum safety.
 
+## 🔒 Security Notice
+
+VM-Tools has been hardened against CWE-22 (Path Traversal) vulnerabilities. See [SECURITY_CWE22.md](SECURITY_CWE22.md) for detailed security improvements and protections implemented.
+
 ## Features
 
 ### ✨ Core Functionality
