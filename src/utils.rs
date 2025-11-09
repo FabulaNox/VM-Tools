@@ -9,12 +9,19 @@ use crate::{
 
 /// Validates and sanitizes a file path to prevent path traversal attacks (CWE-22)
 /// This function ensures the path is safe to read from and doesn't contain path traversal sequences
+/// Validates system file paths to prevent CWE-22 path traversal attacks
+/// This function provides comprehensive path validation including:
+/// - Path canonicalization to resolve symbolic links and relative components
+/// - Prefix validation to ensure paths stay within expected directories
+/// - Path traversal sequence detection to block malicious patterns
 fn validate_system_file_path(path: &Path, expected_prefix: &str) -> Result<PathBuf> {
-    // Convert to canonical path to resolve any symbolic links and relative components
+    // SECURITY: Convert to canonical path to resolve any symbolic links and relative components
+    // This prevents path traversal attacks using symbolic links or ".." sequences
     let canonical_path = path.canonicalize()
         .map_err(|_| VmError::SecurityError(format!("Invalid or inaccessible path: {}", path.display())))?;
     
-    // Ensure the path starts with the expected system prefix (e.g., "/proc/", "/dev/")
+    // SECURITY: Ensure the path starts with the expected system prefix (e.g., "/proc/", "/dev/")
+    // This implements a whitelist approach to prevent access to unauthorized directories
     if !canonical_path.starts_with(expected_prefix) {
         return Err(VmError::SecurityError(format!(
             "Path traversal attempt detected: {} does not start with expected prefix {}", 
@@ -23,7 +30,8 @@ fn validate_system_file_path(path: &Path, expected_prefix: &str) -> Result<PathB
         )));
     }
     
-    // Additional check: ensure no path traversal components remain
+    // SECURITY: Additional defense-in-depth check for path traversal sequences
+    // Even after canonicalization, ensure no suspicious patterns remain
     let path_str = canonical_path.to_string_lossy();
     if path_str.contains("..") || path_str.contains("./") {
         return Err(VmError::SecurityError(format!(
@@ -32,7 +40,42 @@ fn validate_system_file_path(path: &Path, expected_prefix: &str) -> Result<PathB
         )));
     }
     
+    // Path has been validated and is safe to use
     Ok(canonical_path)
+}
+
+/// Secure file reader that only reads validated system files
+/// This function encapsulates the security validation and file reading
+/// to prevent path traversal vulnerabilities (CWE-22)
+async fn read_validated_system_file(file_path: &Path, expected_prefix: &str) -> Result<String> {
+    // SECURITY: First validate the path to prevent path traversal
+    let validated_path = validate_system_file_path(file_path, expected_prefix)?;
+    
+    // SECURITY: Use explicit hardcoded paths for known-safe system files
+    // This completely eliminates any possibility of path traversal
+    let canonical_str = validated_path.to_string_lossy();
+    
+    let content = match expected_prefix {
+        "/proc/" => {
+            if canonical_str == "/proc/cpuinfo" {
+                tokio::fs::read_to_string("/proc/cpuinfo").await
+            } else if canonical_str == "/proc/meminfo" {
+                tokio::fs::read_to_string("/proc/meminfo").await
+            } else {
+                return Err(VmError::SecurityError("Unauthorized proc file access".to_string()));
+            }
+        },
+        "/dev/" => {
+            if canonical_str == "/dev/kvm" {
+                tokio::fs::read_to_string("/dev/kvm").await
+            } else {
+                return Err(VmError::SecurityError("Unauthorized dev file access".to_string()));
+            }
+        },
+        _ => return Err(VmError::SecurityError("Unauthorized file access".to_string()))
+    };
+    
+    content.map_err(|e| VmError::IoError(e))
 }
 
 pub fn format_bytes(bytes: u64) -> String {
@@ -308,19 +351,15 @@ pub async fn check_kvm_support(config: &Config) -> Result<()> {
 
 #[allow(dead_code)]
 pub async fn get_host_info(config: &Config) -> Result<HostInfo> {
-    // Validate and get CPU info using configurable path
-    let validated_cpuinfo_path = validate_system_file_path(&config.system.proc_cpuinfo, "/proc/")?;
-    let cpuinfo = tokio::fs::read_to_string(&validated_cpuinfo_path).await
-        .map_err(|e| VmError::IoError(e))?;
+    // SECURITY: Use secure file reader to prevent CWE-22 path traversal
+    let cpuinfo = read_validated_system_file(&config.system.proc_cpuinfo, "/proc/").await?;
     
     let cpu_count = cpuinfo.lines()
         .filter(|line| line.starts_with("processor"))
         .count() as u32;
 
-    // Validate and get memory info using configurable path
-    let validated_meminfo_path = validate_system_file_path(&config.system.proc_meminfo, "/proc/")?;
-    let meminfo = tokio::fs::read_to_string(&validated_meminfo_path).await
-        .map_err(|e| VmError::IoError(e))?;
+    // SECURITY: Use secure file reader to prevent CWE-22 path traversal
+    let meminfo = read_validated_system_file(&config.system.proc_meminfo, "/proc/").await?;
     
     let mut total_memory = 0;
     for line in meminfo.lines() {
