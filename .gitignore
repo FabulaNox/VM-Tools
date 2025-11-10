@@ -117,3 +117,20 @@ troubleshoot*.txt
 debug*.sh
 temp-*.sh
 fix-*.sh
+
+# Development and debugging documentation (not for end users)
+DEPLOY*.md
+STATUS.md
+FIXES.md
+SUMMARY.md
+UNINSTALL.md
+CONFIGURABLE_PATHS.md
+
+# Python virtual environments
+.venv/
+venv/
+env/
+.env/
+
+# VS Code workspace files (personal development files)
+*.code-workspace
