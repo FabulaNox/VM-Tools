@@ -97,6 +97,9 @@ async fn main() {
         cli::Commands::FixClipboard { name } => {
             vm_manager.fix_clipboard_integration(&name).await
         }
+        cli::Commands::FixIdentity { name, hostname } => {
+            vm_manager.fix_vm_identity(&name, hostname.as_deref()).await
+        }
     };
     
     if let Err(e) = result {

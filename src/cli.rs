@@ -141,6 +141,16 @@ pub enum Commands {
         /// Name of the VM to fix
         name: String,
     },
+    
+    /// Fix identity issues for cloned VMs (hostname, network identity)
+    FixIdentity {
+        /// Name of the VM to fix
+        name: String,
+        
+        /// Set new hostname for the VM (optional, defaults to VM name)
+        #[arg(long)]
+        hostname: Option<String>,
+    },
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {

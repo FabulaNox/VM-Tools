@@ -872,4 +872,61 @@ impl VmManager {
         
         Ok(())
     }
+
+    /// Fixes VM identity issues for cloned VMs
+    pub async fn fix_vm_identity(&self, name: &str, new_hostname: Option<&str>) -> Result<()> {
+        println!("🔄 Fixing identity issues for VM '{}'...", name.cyan());
+        
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
+        let hostname = new_hostname.unwrap_or(name);
+        
+        // Check if VM exists
+        if !self.libvirt.domain_exists(name).await? {
+            return Err(VmError::VmNotFound(name.to_string()));
+        }
+        
+        // Get VM state
+        let state = self.libvirt.get_domain_state(name).await?;
+        
+        if state == VmState::Running {
+            println!("⚠️  VM is currently running. Identity changes require guest OS access.");
+            println!();
+            println!("🔧 To fix identity issues in the running VM:");
+            println!("   1. Connect to the VM console or SSH into it");
+            println!("   2. Change hostname: sudo hostnamectl set-hostname {}", hostname);
+            println!("   3. Update /etc/hosts file:");
+            println!("      127.0.0.1 localhost {}", hostname);
+            println!("      ::1       localhost {}", hostname);
+            println!("   4. Clear DHCP client ID: sudo rm -f /var/lib/dhcp/dhclient.leases");
+            println!("   5. Restart networking: sudo systemctl restart networking");
+            println!("   6. Reboot the VM for full effect: sudo reboot");
+            println!();
+            println!("💡 Alternative: Shutdown VM and run with --hostname to get detailed instructions");
+        } else {
+            println!("📋 VM is stopped. Here are the steps to fix identity issues:");
+            println!();
+            println!("🚀 Automated approach (when VM starts):");
+            println!("   1. Start the VM: vmtools start {}", name);
+            println!("   2. Connect via console: vmtools console {}", name);
+            println!("   3. Run: sudo hostnamectl set-hostname {}", hostname);
+            println!("   4. Update /etc/hosts and clear DHCP leases (see above)");
+            println!();
+            println!("🔧 Manual approach (mount disk image):");
+            println!("   1. Locate VM disk: sudo virsh domblklist {}", name);
+            println!("   2. Mount the disk image and edit files directly");
+            println!("   3. Update hostname in /etc/hostname and /etc/hosts");
+            println!("   4. Clear /var/lib/dhcp/dhclient.leases");
+            println!();
+            println!("⚠️  Common issues with cloned VMs:");
+            println!("   • DHCP hostname conflicts (showing '{}' instead of '{}')", "Hunter-Seeker", hostname);
+            println!("   • SSH host key conflicts (same keys as original VM)");
+            println!("   • Machine ID conflicts (/etc/machine-id)");
+            println!();
+            println!("💡 Consider regenerating SSH keys and machine ID after hostname change");
+        }
+        
+        Ok(())
+    }
 }
