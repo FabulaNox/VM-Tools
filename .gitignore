@@ -126,6 +126,12 @@ SUMMARY.md
 UNINSTALL.md
 CONFIGURABLE_PATHS.md
 
+# Development context and session tracking (local only)
+CONTEXT.md
+TODO.md
+SESSION_*.md
+PROGRESS_*.md
+
 # Python virtual environments
 .venv/
 venv/
