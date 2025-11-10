@@ -585,12 +585,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] Performance benchmarks
 - [ ] Enterprise features
 
-## Support
-
-- **Documentation**: This README and inline code comments
-- **Issues**: GitHub Issues for bug reports and feature requests
-- **Discussions**: GitHub Discussions for questions and community support
-
 ---
 
-**vmtools** - Fast, safe, and reliable VM management for Linux 🚀
+**vmtools** - Fast(-ish), safe(-ish), and reliable(-ish) VM management for Linux 🚀
