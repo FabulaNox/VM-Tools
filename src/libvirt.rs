@@ -333,6 +333,24 @@ impl LibvirtClient {
         Ok(())
     }
 
+    pub async fn get_domain_xml(&self, name: &str) -> Result<String> {
+        let output = AsyncCommand::new("sudo")
+            .args(&["virsh", "-c", &self.uri, "dumpxml", name])
+            .output()
+            .await
+            .map_err(|e| VmError::LibvirtError(format!("Failed to get domain XML: {}", e)))?;
+
+        if !output.status.success() {
+            return Err(VmError::LibvirtError(format!(
+                "Failed to dump XML for domain '{}': {}", 
+                name, 
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
     pub async fn list_networks(&self) -> Result<Vec<(String, bool, String, bool)>> {
         let output = AsyncCommand::new("virsh")
             .args(&["-c", &self.uri, "net-list", "--all"])

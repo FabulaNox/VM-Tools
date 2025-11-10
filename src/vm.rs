@@ -771,4 +771,105 @@ impl VmManager {
         println!("✅ VM configuration analysis complete");
         Ok(())
     }
+    
+    /// Fixes clipboard integration by adding SPICE agent channels and clipboard support
+    pub async fn fix_clipboard_integration(&self, name: &str) -> Result<()> {
+        println!("📋 Fixing clipboard integration for VM '{}'...", name.cyan());
+        
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
+        // Check if VM is running
+        let state = self.libvirt.get_domain_state(name).await?;
+        if state == VmState::Running {
+            return Err(VmError::InvalidVmState(
+                "Cannot modify VM configuration while running. Please stop the VM first.".to_string()
+            ));
+        }
+        
+        // Get current VM XML configuration
+        let xml_content = self.libvirt.get_domain_xml(name).await?;
+        
+        // Check if SPICE agent channel already exists
+        if xml_content.contains("spicevmc") && xml_content.contains("clipboard copypaste") {
+            println!("✅ Clipboard integration already configured for VM '{}'", name);
+            return Ok(());
+        }
+        
+        println!("🔧 Adding SPICE agent channel and clipboard support...");
+        
+        let mut updated_xml = xml_content.clone();
+        
+        // Add SPICE agent channel if not present
+        if !xml_content.contains("spicevmc") {
+            // Find existing channel and add SPICE agent channel after it
+            if let Some(pos) = xml_content.find("</channel>") {
+                let insert_pos = xml_content[..pos].rfind('\n').unwrap_or(pos) + 1;
+                let indent = "    "; // Adjust indentation as needed
+                
+                let spice_channel = format!(
+                    "{}    <channel type='spicevmc'>\n\
+                     {}      <target type='virtio' name='com.redhat.spice.0'/>\n\
+                     {}      <address type='virtio-serial' controller='0' bus='0' port='2'/>\n\
+                     {}    </channel>\n",
+                    indent, indent, indent, indent
+                );
+                
+                updated_xml.insert_str(insert_pos, &spice_channel);
+            }
+        }
+        
+        // Add clipboard support to graphics section
+        if !xml_content.contains("clipboard copypaste") {
+            if let Some(graphics_start) = updated_xml.find("<graphics type='spice'") {
+                if let Some(graphics_end) = updated_xml[graphics_start..].find("</graphics>") {
+                    let graphics_end_abs = graphics_start + graphics_end;
+                    
+                    // Check if there's already image compression line
+                    if let Some(img_pos) = updated_xml[graphics_start..graphics_end_abs].rfind("</image>") {
+                        let img_pos_abs = graphics_start + img_pos + "</image>".len();
+                        let clipboard_config = "\n      <clipboard copypaste='yes'/>";
+                        updated_xml.insert_str(img_pos_abs, clipboard_config);
+                    } else {
+                        // Add before closing graphics tag
+                        let clipboard_config = "      <clipboard copypaste='yes'/>\n    ";
+                        updated_xml.insert_str(graphics_end_abs, clipboard_config);
+                    }
+                }
+            }
+        }
+        
+        // Apply the updated configuration
+        if updated_xml != xml_content {
+            // Save to temporary file
+            let temp_file = format!("/tmp/{}_clipboard_fix.xml", name);
+            std::fs::write(&temp_file, &updated_xml)
+                .map_err(|e| VmError::LibvirtError(format!("Failed to write XML file: {}", e)))?;
+            
+            // Apply the configuration
+            let output = tokio::process::Command::new("sudo")
+                .args(&["virsh", "define", &temp_file])
+                .output()
+                .await
+                .map_err(|e| VmError::CommandError(format!("Failed to apply VM configuration: {}", e)))?;
+            
+            if !output.status.success() {
+                return Err(VmError::CommandError(format!(
+                    "Failed to apply clipboard configuration: {}", 
+                    String::from_utf8_lossy(&output.stderr)
+                )));
+            }
+            
+            // Clean up temporary file
+            let _ = std::fs::remove_file(&temp_file);
+            
+            println!("✅ Clipboard integration configured successfully");
+            println!("💡 Please restart the VM for changes to take effect");
+            println!("📝 Note: Ensure spice-vdagent is installed in the guest OS for full functionality");
+        } else {
+            println!("✅ Clipboard integration already properly configured");
+        }
+        
+        Ok(())
+    }
 }

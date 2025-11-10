@@ -135,6 +135,12 @@ pub enum Commands {
         /// Name of the VM to optimize
         name: String,
     },
+    
+    /// Fix clipboard and SPICE integration issues
+    FixClipboard {
+        /// Name of the VM to fix
+        name: String,
+    },
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {

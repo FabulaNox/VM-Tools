@@ -94,6 +94,9 @@ async fn main() {
         cli::Commands::Optimize { name } => {
             vm_manager.optimize_vm_config(&name).await
         }
+        cli::Commands::FixClipboard { name } => {
+            vm_manager.fix_clipboard_integration(&name).await
+        }
     };
     
     if let Err(e) = result {
