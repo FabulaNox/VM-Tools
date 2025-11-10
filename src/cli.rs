@@ -119,6 +119,22 @@ pub enum Commands {
         #[arg(short, long)]
         get: Option<String>,
     },
+    
+    /// Fix network configuration issues for a VM
+    FixNetwork {
+        /// Name of the VM to fix
+        name: String,
+        
+        /// Automatically apply fixes (default: analyze only)
+        #[arg(long)]
+        auto: bool,
+    },
+    
+    /// Optimize VM configuration based on libvirt environment
+    Optimize {
+        /// Name of the VM to optimize
+        name: String,
+    },
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {

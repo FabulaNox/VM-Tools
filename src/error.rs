@@ -50,6 +50,12 @@ pub enum VmError {
     
     #[error("Timeout: {0}")]
     Timeout(String),
+    
+    #[error("Command execution error: {0}")]
+    CommandError(String),
+    
+    #[error("Operation error: {0}")]
+    OperationError(String),
 }
 
 pub type Result<T> = std::result::Result<T, VmError>;

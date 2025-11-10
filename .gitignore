@@ -100,3 +100,20 @@ core.*
 
 # Profiling
 *.prof
+
+# Temporary diagnostic and fix scripts (generated during troubleshooting)
+*-network-diagnostic*.sh
+*-network-fix*.sh
+*-interface-repair*.sh
+*-quick-commands*.txt
+*-vm-fix-commands*.txt
+quick-*-commands.txt
+vm-quick-*.sh
+kali-*.sh
+host-*.sh
+
+# Temporary troubleshooting files
+troubleshoot*.txt
+debug*.sh
+temp-*.sh
+fix-*.sh

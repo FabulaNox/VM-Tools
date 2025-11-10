@@ -389,3 +389,391 @@ pub struct HostInfo {
     pub architecture: String,
     pub os: String,
 }
+
+/// Network mismatch detection and auto-configuration functionality
+#[derive(Debug, Clone)]
+pub struct NetworkInterface {
+    pub mac_address: String,
+    pub network: String,
+    pub bridge: String,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct NetworkMismatch {
+    pub interface_name: String,
+    pub issue_type: NetworkIssueType,
+    pub current_config: Option<NetworkInterface>,
+    pub suggested_config: NetworkInterface,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NetworkIssueType {
+    DuplicateMacAddress,
+    InactiveNetwork,
+    InvalidNetworkReference,
+    ConflictingConfiguration,
+    MissingBridge,
+}
+
+impl std::fmt::Display for NetworkIssueType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetworkIssueType::DuplicateMacAddress => write!(f, "Duplicate MAC Address"),
+            NetworkIssueType::InactiveNetwork => write!(f, "Inactive Network"),
+            NetworkIssueType::InvalidNetworkReference => write!(f, "Invalid Network Reference"),
+            NetworkIssueType::ConflictingConfiguration => write!(f, "Conflicting Configuration"),
+            NetworkIssueType::MissingBridge => write!(f, "Missing Bridge"),
+        }
+    }
+}
+
+/// Detects network mismatches in VM configuration
+pub async fn detect_network_mismatches(vm_name: &str) -> Result<Vec<NetworkMismatch>> {
+    let mut mismatches = Vec::new();
+    
+    // Get VM's current network configuration
+    let vm_interfaces = get_vm_network_interfaces(vm_name).await?;
+    
+    // Get available libvirt networks
+    let available_networks = get_available_networks().await?;
+    
+    // Check for duplicate MAC addresses across all VMs
+    let all_mac_addresses = get_all_vm_mac_addresses().await?;
+    
+    for interface in vm_interfaces {
+        // Check for duplicate MAC addresses
+        let mac_count = all_mac_addresses.iter()
+            .filter(|mac| **mac == interface.mac_address)
+            .count();
+        
+        if mac_count > 1 {
+            mismatches.push(NetworkMismatch {
+                interface_name: format!("{}-dup-mac", interface.network),
+                issue_type: NetworkIssueType::DuplicateMacAddress,
+                current_config: Some(interface.clone()),
+                suggested_config: NetworkInterface {
+                    mac_address: generate_mac_address(),
+                    network: interface.network.clone(),
+                    bridge: interface.bridge.clone(),
+                    is_active: interface.is_active,
+                },
+            });
+        }
+        
+        // Check if referenced network exists and is active
+        if let Some(network_info) = available_networks.iter().find(|n| n.network == interface.network) {
+            if !network_info.is_active {
+                mismatches.push(NetworkMismatch {
+                    interface_name: interface.network.clone(),
+                    issue_type: NetworkIssueType::InactiveNetwork,
+                    current_config: Some(interface.clone()),
+                    suggested_config: NetworkInterface {
+                        mac_address: interface.mac_address.clone(),
+                        network: interface.network.clone(),
+                        bridge: interface.bridge.clone(),
+                        is_active: true,
+                    },
+                });
+            }
+        } else {
+            // Network doesn't exist, suggest using default
+            let default_network = available_networks.iter()
+                .find(|n| n.network == "default" && n.is_active)
+                .cloned()
+                .unwrap_or_else(|| NetworkInterface {
+                    mac_address: interface.mac_address.clone(),
+                    network: "default".to_string(),
+                    bridge: "virbr0".to_string(),
+                    is_active: false,
+                });
+            
+            mismatches.push(NetworkMismatch {
+                interface_name: interface.network.clone(),
+                issue_type: NetworkIssueType::InvalidNetworkReference,
+                current_config: Some(interface),
+                suggested_config: default_network,
+            });
+        }
+    }
+    
+    Ok(mismatches)
+}
+
+/// Gets network interfaces for a specific VM
+async fn get_vm_network_interfaces(vm_name: &str) -> Result<Vec<NetworkInterface>> {
+    // Try with regular virsh first, then with sudo if needed
+    let mut cmd = Command::new("virsh");
+    cmd.args(&["domiflist", vm_name]);
+    
+    let output = cmd.output().await
+        .map_err(|e| VmError::CommandError(format!("Failed to get VM network interfaces: {}", e)))?;
+    
+    // If regular virsh fails, try with sudo
+    if !output.status.success() {
+        let mut sudo_cmd = Command::new("sudo");
+        sudo_cmd.args(&["virsh", "domiflist", vm_name]);
+        
+        let sudo_output = sudo_cmd.output().await
+            .map_err(|e| VmError::CommandError(format!("Failed to get VM network interfaces with sudo: {}", e)))?;
+        
+        if !sudo_output.status.success() {
+            return Err(VmError::CommandError(format!(
+                "Failed to get VM network interfaces: {}", 
+                String::from_utf8_lossy(&sudo_output.stderr)
+            )));
+        }
+        
+        return parse_domiflist_output(&String::from_utf8_lossy(&sudo_output.stdout)).await;
+    }
+    
+    parse_domiflist_output(&String::from_utf8_lossy(&output.stdout)).await
+}
+
+/// Helper function to parse domiflist output
+async fn parse_domiflist_output(output_str: &str) -> Result<Vec<NetworkInterface>> {
+    let mut interfaces = Vec::new();
+    
+    for line in output_str.lines().skip(2) { // Skip header lines
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 4 {
+            let network = parts[1].to_string();
+            let bridge = parts[2].to_string();
+            let mac = parts[4].to_string();
+            
+            // Check if network is active
+            let is_active = is_network_active(&network).await.unwrap_or(false);
+            
+            interfaces.push(NetworkInterface {
+                mac_address: mac,
+                network,
+                bridge,
+                is_active,
+            });
+        }
+    }
+    
+    Ok(interfaces)
+}
+
+/// Gets all available libvirt networks
+async fn get_available_networks() -> Result<Vec<NetworkInterface>> {
+    // Try with regular virsh first, then with sudo if needed
+    let mut cmd = Command::new("virsh");
+    cmd.args(&["net-list", "--all"]);
+    
+    let output = cmd.output().await
+        .map_err(|e| VmError::CommandError(format!("Failed to list networks: {}", e)))?;
+    
+    let output_str = if !output.status.success() {
+        // Try with sudo
+        let mut sudo_cmd = Command::new("sudo");
+        sudo_cmd.args(&["virsh", "net-list", "--all"]);
+        
+        let sudo_output = sudo_cmd.output().await
+            .map_err(|e| VmError::CommandError(format!("Failed to list networks with sudo: {}", e)))?;
+        
+        if !sudo_output.status.success() {
+            return Err(VmError::CommandError(format!(
+                "Failed to list networks: {}", 
+                String::from_utf8_lossy(&sudo_output.stderr)
+            )));
+        }
+        
+        String::from_utf8_lossy(&sudo_output.stdout).to_string()
+    } else {
+        String::from_utf8_lossy(&output.stdout).to_string()
+    };
+    let mut networks = Vec::new();
+    
+    for line in output_str.lines().skip(2) { // Skip header lines
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 3 {
+            let network_name = parts[0].to_string();
+            let is_active = parts[1] == "active";
+            let bridge = get_network_bridge(&network_name).await.unwrap_or_else(|| "virbr0".to_string());
+            
+            networks.push(NetworkInterface {
+                mac_address: String::new(), // Not applicable for network definitions
+                network: network_name,
+                bridge,
+                is_active,
+            });
+        }
+    }
+    
+    Ok(networks)
+}
+
+/// Gets all MAC addresses used by VMs
+async fn get_all_vm_mac_addresses() -> Result<Vec<String>> {
+    let output = Command::new("virsh")
+        .args(&["list", "--all", "--name"])
+        .output()
+        .await
+        .map_err(|e| VmError::CommandError(format!("Failed to list VMs: {}", e)))?;
+    
+    if !output.status.success() {
+        return Err(VmError::CommandError(format!(
+            "Failed to list VMs: {}", 
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    
+    let output_string = String::from_utf8_lossy(&output.stdout);
+    let vm_names: Vec<&str> = output_string
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    
+    let mut all_macs = Vec::new();
+    
+    for vm_name in vm_names {
+        if let Ok(interfaces) = get_vm_network_interfaces(vm_name).await {
+            for interface in interfaces {
+                all_macs.push(interface.mac_address);
+            }
+        }
+    }
+    
+    Ok(all_macs)
+}
+
+/// Checks if a network is currently active
+async fn is_network_active(network_name: &str) -> Result<bool> {
+    let output = Command::new("virsh")
+        .args(&["net-info", network_name])
+        .output()
+        .await
+        .map_err(|e| VmError::CommandError(format!("Failed to get network info: {}", e)))?;
+    
+    if !output.status.success() {
+        return Ok(false);
+    }
+    
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    for line in output_str.lines() {
+        if line.starts_with("Active:") {
+            return Ok(line.contains("yes"));
+        }
+    }
+    
+    Ok(false)
+}
+
+/// Gets the bridge name for a network
+async fn get_network_bridge(network_name: &str) -> Option<String> {
+    let output = Command::new("virsh")
+        .args(&["net-info", network_name])
+        .output()
+        .await
+        .ok()?;
+    
+    if !output.status.success() {
+        return None;
+    }
+    
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    for line in output_str.lines() {
+        if line.starts_with("Bridge:") {
+            return line.split_whitespace().nth(1).map(|s| s.to_string());
+        }
+    }
+    
+    None
+}
+
+/// Automatically fixes network mismatches
+pub async fn auto_fix_network_mismatches(vm_name: &str, mismatches: &[NetworkMismatch]) -> Result<Vec<String>> {
+    let mut fixes_applied = Vec::new();
+    
+    for mismatch in mismatches {
+        match mismatch.issue_type {
+            NetworkIssueType::DuplicateMacAddress => {
+                if let Err(e) = update_vm_mac_address(vm_name, &mismatch.suggested_config.mac_address).await {
+                    eprintln!("Failed to update MAC address: {}", e);
+                } else {
+                    fixes_applied.push(format!("Updated MAC address to {}", mismatch.suggested_config.mac_address));
+                }
+            },
+            NetworkIssueType::InactiveNetwork => {
+                if let Err(e) = start_network(&mismatch.suggested_config.network).await {
+                    eprintln!("Failed to start network {}: {}", mismatch.suggested_config.network, e);
+                } else {
+                    fixes_applied.push(format!("Started network {}", mismatch.suggested_config.network));
+                }
+            },
+            NetworkIssueType::InvalidNetworkReference => {
+                if let Err(e) = update_vm_network(vm_name, &mismatch.current_config.as_ref().unwrap().network, &mismatch.suggested_config.network).await {
+                    eprintln!("Failed to update network reference: {}", e);
+                } else {
+                    fixes_applied.push(format!("Updated network from {} to {}", 
+                        mismatch.current_config.as_ref().unwrap().network, 
+                        mismatch.suggested_config.network));
+                }
+            },
+            _ => {
+                // Other issues require manual intervention
+                fixes_applied.push(format!("Issue {} requires manual intervention", mismatch.issue_type));
+            }
+        }
+    }
+    
+    Ok(fixes_applied)
+}
+
+/// Updates MAC address for a VM interface
+async fn update_vm_mac_address(vm_name: &str, new_mac: &str) -> Result<()> {
+    // This requires editing the VM XML configuration
+    // For now, we'll use a simple sed-based approach, but in production
+    // you'd want to use proper XML parsing
+    
+    let output = Command::new("bash")
+        .args(&["-c", &format!(
+            "virsh dumpxml {} | sed 's/mac address=.*/mac address=\"{}\"\\/>/g' | virsh define /dev/stdin",
+            vm_name, new_mac
+        )])
+        .output()
+        .await
+        .map_err(|e| VmError::CommandError(format!("Failed to update MAC address: {}", e)))?;
+    
+    if !output.status.success() {
+        return Err(VmError::CommandError(format!(
+            "Failed to update MAC address: {}", 
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    
+    Ok(())
+}
+
+/// Starts a libvirt network
+async fn start_network(network_name: &str) -> Result<()> {
+    let output = Command::new("virsh")
+        .args(&["net-start", network_name])
+        .output()
+        .await
+        .map_err(|e| VmError::CommandError(format!("Failed to start network: {}", e)))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("already active") {
+            return Ok(()); // Network is already active, that's fine
+        }
+        return Err(VmError::CommandError(format!(
+            "Failed to start network {}: {}", 
+            network_name, stderr
+        )));
+    }
+    
+    Ok(())
+}
+
+/// Updates VM network configuration
+async fn update_vm_network(_vm_name: &str, _old_network: &str, _new_network: &str) -> Result<()> {
+    // This would require complex XML manipulation
+    // For now, we'll return an error suggesting manual intervention
+    Err(VmError::OperationError(
+        "Network configuration updates require manual XML editing via 'virsh edit'".to_string()
+    ))
+}

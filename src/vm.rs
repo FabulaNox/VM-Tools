@@ -639,4 +639,136 @@ impl VmManager {
         
         Ok(xml)
     }
+    
+    /// Detects and fixes network mismatches for a VM
+    pub async fn fix_network_issues(&self, name: &str, auto_fix: bool) -> Result<()> {
+        println!("🔍 Analyzing network configuration for VM '{}'...", name.cyan());
+        
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
+        // Detect network mismatches
+        let mismatches = utils::detect_network_mismatches(name).await?;
+        
+        if mismatches.is_empty() {
+            println!("✅ No network issues detected for VM '{}'", name.green());
+            return Ok(());
+        }
+        
+        println!("⚠️  Found {} network issue(s):", mismatches.len());
+        for (i, mismatch) in mismatches.iter().enumerate() {
+            println!("  {}. {} on interface '{}'", 
+                     i + 1, 
+                     mismatch.issue_type, 
+                     mismatch.interface_name);
+            
+            if let Some(current) = &mismatch.current_config {
+                println!("     Current: Network={}, MAC={}, Active={}", 
+                         current.network, 
+                         current.mac_address, 
+                         current.is_active);
+            }
+            
+            println!("     Suggested: Network={}, MAC={}, Active={}", 
+                     mismatch.suggested_config.network, 
+                     mismatch.suggested_config.mac_address, 
+                     mismatch.suggested_config.is_active);
+        }
+        
+        if auto_fix {
+            println!("\n🔧 Attempting to auto-fix network issues...");
+            let fixes = utils::auto_fix_network_mismatches(name, &mismatches).await?;
+            
+            if fixes.is_empty() {
+                println!("❌ No automatic fixes could be applied");
+            } else {
+                println!("✅ Applied {} fix(es):", fixes.len());
+                for fix in fixes {
+                    println!("  • {}", fix);
+                }
+                
+                // Suggest restarting the VM
+                println!("\n💡 Recommendation: Restart the VM to apply network changes:");
+                println!("   vmtools stop {} && vmtools start {}", name, name);
+            }
+        } else {
+            println!("\n💡 To automatically fix these issues, run:");
+            println!("   vmtools fix-network {} --auto", name);
+            
+            println!("\n📝 Manual fixes you can apply:");
+            for mismatch in &mismatches {
+                match mismatch.issue_type {
+                    utils::NetworkIssueType::DuplicateMacAddress => {
+                        println!("  • Generate new MAC: virsh edit {} (update <mac address='...'/>)", name);
+                    },
+                    utils::NetworkIssueType::InactiveNetwork => {
+                        println!("  • Start network: virsh net-start {}", mismatch.suggested_config.network);
+                    },
+                    utils::NetworkIssueType::InvalidNetworkReference => {
+                        println!("  • Update network: virsh edit {} (change <source network='...'/>)", name);
+                    },
+                    _ => {
+                        println!("  • Check libvirt documentation for {}", mismatch.issue_type);
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Optimizes VM configuration based on libvirt environment
+    pub async fn optimize_vm_config(&self, name: &str) -> Result<()> {
+        println!("🚀 Optimizing VM configuration for '{}'...", name.cyan());
+        
+        // Validate VM name to prevent path traversal attacks (CWE-22)
+        utils::validate_vm_name(name)?;
+        
+        // Check if VM is running (can't optimize running VM)
+        let state = self.libvirt.get_domain_state(name).await?;
+        if state == VmState::Running {
+            return Err(VmError::InvalidVmState(
+                "Cannot optimize running VM. Please stop the VM first.".to_string()
+            ));
+        }
+        
+        // Get current VM configuration
+        let vm_info = self.libvirt.get_domain_info(name).await?;
+        
+        // Check network configuration
+        self.fix_network_issues(name, false).await?;
+        
+        // Check for excessive network interfaces
+        if vm_info.network_info.len() > 2 {
+            println!("⚠️  VM has {} network interfaces. Consider simplifying:", vm_info.network_info.len());
+            for (i, net) in vm_info.network_info.iter().enumerate() {
+                println!("  {}. {} on {} ({})", i + 1, net.interface, net.network, net.mac_address);
+            }
+            println!("💡 Recommendation: Use only necessary network interfaces for better performance");
+        }
+        
+        // Check available networks and suggest optimization
+        let networks = self.libvirt.list_networks().await?;
+        let active_networks: Vec<String> = networks.iter()
+            .filter(|(_, active, _, _)| *active)
+            .map(|(name, _, _, _)| name.clone())
+            .collect();
+            
+        if active_networks.len() > 1 {
+            println!("📡 Available networks for optimization:");
+            for network in &active_networks {
+                println!("  • {}", network);
+            }
+            
+            if !active_networks.contains(&self.config.network.default_network) {
+                println!("⚠️  Configured default network '{}' is not active", self.config.network.default_network);
+                if let Some(first_active) = active_networks.first() {
+                    println!("💡 Consider updating config to use: {}", first_active);
+                }
+            }
+        }
+        
+        println!("✅ VM configuration analysis complete");
+        Ok(())
+    }
 }

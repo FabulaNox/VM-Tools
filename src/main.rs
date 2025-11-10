@@ -88,6 +88,12 @@ async fn main() {
                 Err(VmError::InvalidInput("No config action specified".to_string()))
             }
         }
+        cli::Commands::FixNetwork { name, auto } => {
+            vm_manager.fix_network_issues(&name, auto).await
+        }
+        cli::Commands::Optimize { name } => {
+            vm_manager.optimize_vm_config(&name).await
+        }
     };
     
     if let Err(e) = result {
