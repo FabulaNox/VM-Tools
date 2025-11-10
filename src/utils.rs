@@ -617,10 +617,15 @@ async fn parse_domiflist_output(output_str: &str) -> Result<Vec<NetworkInterface
     
     for line in output_str.lines().skip(2) { // Skip header lines
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 4 {
-            let network = parts[1].to_string();
-            let bridge = parts[2].to_string();
-            let mac = parts[4].to_string();
+        if parts.len() >= 5 {
+            // Parse virsh domiflist output format:
+            // Interface   Type      Source     Model    MAC
+            // vnet0       network   default    virtio   52:54:00:b8:35:45
+            let network = parts[2].to_string();  // Source (network name)
+            let mac = parts[4].to_string();      // MAC address
+            
+            // Get bridge name for this network
+            let bridge = get_network_bridge(&network).await.unwrap_or_else(|| "virbr0".to_string());
             
             // Check if network is active
             let is_active = is_network_active(&network).await.unwrap_or(false);
@@ -639,32 +644,21 @@ async fn parse_domiflist_output(output_str: &str) -> Result<Vec<NetworkInterface
 
 /// Gets all available libvirt networks
 async fn get_available_networks() -> Result<Vec<NetworkInterface>> {
-    // Try with regular virsh first, then with sudo if needed
-    let mut cmd = Command::new("virsh");
-    cmd.args(&["net-list", "--all"]);
-    
-    let output = cmd.output().await
+    // Always use sudo for network operations
+    let output = Command::new("sudo")
+        .args(&["virsh", "net-list", "--all"])
+        .output()
+        .await
         .map_err(|e| VmError::CommandError(format!("Failed to list networks: {}", e)))?;
     
-    let output_str = if !output.status.success() {
-        // Try with sudo
-        let mut sudo_cmd = Command::new("sudo");
-        sudo_cmd.args(&["virsh", "net-list", "--all"]);
-        
-        let sudo_output = sudo_cmd.output().await
-            .map_err(|e| VmError::CommandError(format!("Failed to list networks with sudo: {}", e)))?;
-        
-        if !sudo_output.status.success() {
-            return Err(VmError::CommandError(format!(
-                "Failed to list networks: {}", 
-                String::from_utf8_lossy(&sudo_output.stderr)
-            )));
-        }
-        
-        String::from_utf8_lossy(&sudo_output.stdout).to_string()
-    } else {
-        String::from_utf8_lossy(&output.stdout).to_string()
-    };
+    if !output.status.success() {
+        return Err(VmError::CommandError(format!(
+            "Failed to list networks: {}", 
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    
+    let output_str = String::from_utf8_lossy(&output.stdout);
     let mut networks = Vec::new();
     
     for line in output_str.lines().skip(2) { // Skip header lines
@@ -722,8 +716,9 @@ async fn get_all_vm_mac_addresses() -> Result<Vec<String>> {
 
 /// Checks if a network is currently active
 async fn is_network_active(network_name: &str) -> Result<bool> {
-    let output = Command::new("virsh")
-        .args(&["net-info", network_name])
+    // Always use sudo for network operations to get accurate state
+    let output = Command::new("sudo")
+        .args(&["virsh", "net-info", network_name])
         .output()
         .await
         .map_err(|e| VmError::CommandError(format!("Failed to get network info: {}", e)))?;
@@ -744,8 +739,9 @@ async fn is_network_active(network_name: &str) -> Result<bool> {
 
 /// Gets the bridge name for a network
 async fn get_network_bridge(network_name: &str) -> Option<String> {
-    let output = Command::new("virsh")
-        .args(&["net-info", network_name])
+    // Always use sudo for network operations
+    let output = Command::new("sudo")
+        .args(&["virsh", "net-info", network_name])
         .output()
         .await
         .ok()?;
